@@ -234,7 +234,7 @@ async function modifyZeonMaintainedDialog() {
         icon: "fas fa-times",
       },
     ],
-    render: (event, button, dialog) => {
+    render: (event, dialog) => {
       const html = dialog.element;
 
       html.querySelectorAll(".delete-spell-per-turn").forEach((btn) => {
