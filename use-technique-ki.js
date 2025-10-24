@@ -141,29 +141,40 @@ if (!token) {
       power: parseInt(technique.system.power.value) || 0,
     };
   
-    let kiReserve = token.actor.system.domine.kiAccumulation.generic.value || 0;
+    const kiAccumulation = token.actor.system.domine.kiAccumulation;
   
-    let totalKiCost = 0;
     for (let char of Object.keys(kiCosts)) {
-      totalKiCost += kiCosts[char];
+      if (kiCosts[char] > 0 && kiAccumulation[char].accumulated.value < kiCosts[char]) {
+        ui.notifications.error(`No tienes suficiente Ki acumulado en ${charNames[char]} para usar esta técnica`);
+        return;
+      }
     }
   
-    if (kiReserve < totalKiCost) {
-      ui.notifications.error(`No tienes suficiente Ki en la reserva para usar esta técnica`);
-      return;
+    const updates = {};
+    let kiReserve = kiAccumulation.generic.value || 0;
+  
+    for (let char of Object.keys(kiCosts)) {
+      const accumulated = kiAccumulation[char].accumulated.value;
+      const cost = kiCosts[char];
+  
+      if (cost > 0) {
+        updates[`system.domine.kiAccumulation.${char}.accumulated.value`] = accumulated - cost;
+      }
+  
+      kiReserve += accumulated - (cost > 0 ? cost : 0);
+      updates[`system.domine.kiAccumulation.${char}.accumulated.value`] = 0;
     }
   
-    kiReserve -= totalKiCost;
+    updates["system.domine.kiAccumulation.generic.value"] = kiReserve;
   
-    token.actor.update({
-      "system.domine.kiAccumulation.generic.value": kiReserve,
-    });
+    token.actor.update(updates);
   
     let description = technique.system.description.value || "";
-  
     let chatMessage = `<b>${token.name}</b> ha usado la técnica: <b>${technique.name}</b>`;
     if (description) {
       chatMessage += `<div>${description}</div>`;
     }
+  
     ChatMessage.create({ content: chatMessage });
   }
+  
