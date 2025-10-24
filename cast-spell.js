@@ -3,9 +3,6 @@ const spells = token.actor.system.mystic.spells;
 const tokenAttrs = token.actor.system.characteristics.primaries;
 let zeonMant = token.actor.system.mystic.zeonMaintained.value;
 
-let stayPreviewOpen = false;
-let stayOpen = false;
-
 const nanoid = (t = 21) => {
   let e = "";
   const r = crypto.getRandomValues(new Uint8Array(t));
@@ -23,7 +20,7 @@ const nanoid = (t = 21) => {
   return e;
 };
 
-function optionsDialog() {
+async function optionsDialog() {
   let spellOptions = "";
   for (const via in viaSpells) {
     spellOptions += `<optgroup label="${
@@ -37,20 +34,18 @@ function optionsDialog() {
   }
 
   const content = `
-        <div>
-            <h1>Usar hechizo</h1>
-        </div>
-        <div>
-            <p>
-                Seleciona el hechizo que quieras utilizar. Presiona el botón inferior
-                para ver una vista previa. En caso de no contar con el Zeón suficiente,
-                no podrás utilizarlo y se te informará de ello.
-            </p>
-        </div>
-        <div class="flexrow">
+        <p class="hint">
+            Selecciona el hechizo que quieras utilizar y el grado deseado. 
+            Presiona <strong>Previsualizar</strong> para ver los detalles antes de lanzarlo.
+        </p>
+        <div class="form-group">
+            <label for="spell-menu">Hechizo</label>
             <select id="spell-menu" name="spell-options">
                 ${spellOptions}
             </select>
+        </div>
+        <div class="form-group">
+            <label for="spell-grade">Grado</label>
             <select id="spell-grade" name="grade-options">
                 <option value="base">Base</option>
                 <option value="intermediate">Intermedio</option>
@@ -58,145 +53,149 @@ function optionsDialog() {
                 <option value="arcane">Arcano</option>
             </select>
         </div>
-        <br>
     `;
 
-  const d = new Dialog({
-    title: "Usar hechizo",
-    content: content,
-    buttons: {
-      preview: {
+  const result = await foundry.applications.api.DialogV2.wait({
+    window: { 
+      title: "Usar hechizo",
+      contentClasses: ["standard-form"]
+    },
+    position: {
+      width: 450,
+      height: "auto"
+    },
+    content,
+    buttons: [
+      {
+        action: "preview",
         label: "Previsualizar",
-        callback: (html) => {
-          const selectedSpellId = html[0].querySelector("#spell-menu").value;
-          const selectedSpellGrade =
-            html[0].querySelector("#spell-grade").value;
-          if (selectedSpellId === undefined) {
-            stayOpen = true;
-            throw new Error("Selecciona una habilidad");
-          } else {
-            stayOpen = true;
-            previewDialog(selectedSpellId, selectedSpellGrade).render(true);
-          }
+        default: true,
+        callback: (event, button, dialog) => {
+          const html = dialog.element;
+          const selectedSpellId = html.querySelector("#spell-menu").value;
+          const selectedSpellGrade = html.querySelector("#spell-grade").value;
+          return { selectedSpellId, selectedSpellGrade };
         },
       },
-    },
-    default: "preview",
-    close: () => {
-      if (stayOpen) {
-        stayOpen = false;
-        d.render(true);
-      }
-    },
+      {
+        action: "cancel",
+        label: "Cancelar",
+        icon: "fas fa-times",
+      },
+    ],
+    rejectClose: false,
   });
-  return d;
+
+  if (result && result.selectedSpellId) {
+    await previewDialog(result.selectedSpellId, result.selectedSpellGrade);
+  }
 }
 
-function previewDialog(selectedSpellId, selectedSpellGrade) {
+async function previewDialog(selectedSpellId, selectedSpellGrade) {
   zeonAccum = token.actor.system.mystic.zeon.accumulated;
   zeonMant = token.actor.system.mystic.zeonMaintained.value;
   const [via, i] = selectedSpellId.split("-");
   const spell = viaSpells[via][i];
   const spellData = spell.system.grades[selectedSpellGrade];
 
+  const hasEnoughZeon = (zeonAccum ?? 0) >= Number(spellData.zeon.value);
+  const hasEnoughIntelligence = tokenAttrs.intelligence.value >= spellData.intRequired.value;
+  const canCast = hasEnoughZeon && hasEnoughIntelligence;
+  const canMaintain = canCast && 
+    !isNaN(Number(spellData.maintenanceCost.value)) && 
+    Number(spellData.maintenanceCost.value) > 0;
+
   const content = `
-        <style>
-            .spell-prop {
-                justify-content: center;
-                gap: 10px;
-            }
-            .spell-prop > p:nth-child(1) {
-                text-align: end;
-            }
-        </style>
-        <div>
-            <h3><strong>Confirma tu hechizo</strong></h3>
-        </div>
-        <div>
-            <p>
-                Revisa la información del hechizo a lanzar. Cuando
-                estés listo, confirma abajo.
-            </p>
-        </div>
-        <div class="flexcol">
-            <center>
-                <h3>${spell.name}</h3>
-            </center>
-            <div class="flexrow spell-prop">
-                <p>Descripción: </p>
-                <p>${spellData.description.value}</p>
+        <h2>${spell.name}</h2>
+        
+        <fieldset>
+            <legend>Detalles del Hechizo</legend>
+            <div class="form-group stacked">
+                <label>Grado</label>
+                <span>${selectedSpellGrade.charAt(0).toUpperCase() + selectedSpellGrade.slice(1)}</span>
             </div>
-            <div class="flexrow spell-prop">
-                <p>Inteligencia requerida:</p>
-                <p>${spellData.intRequired.value}</p>
+            <div class="form-group stacked">
+                <label>Inteligencia requerida</label>
+                <span>${spellData.intRequired.value}</span>
             </div>
-            <div class="flexrow spell-prop">
-                <p>Costo de Zeón:</p>
-                <p>${spellData.zeon.value}</p>
+            <div class="form-group stacked">
+                <label>Costo de Zeón</label>
+                <span>${spellData.zeon.value}</span>
             </div>
-            <div class="flexrow spell-prop">
-                <p>Costo de mantención:</p>
-                <p>${spellData.maintenanceCost.value}</p>
+            <div class="form-group stacked">
+                <label>Costo de mantención</label>
+                <span>${spellData.maintenanceCost.value || 'N/A'}</span>
             </div>
+        </fieldset>
+
+        ${spellData.description.value ? `
+        <fieldset>
+            <legend>Descripción</legend>
+            <p style="margin: 0;">${spellData.description.value}</p>
+        </fieldset>
+        ` : ''}
+        
+        <div class="form-group stacked">
+            <label>Tu Zeón acumulado</label>
+            <span class="${hasEnoughZeon ? 'success' : 'error'}" style="font-weight: bold; font-size: 1.2em;">${zeonAccum ?? 0}</span>
         </div>
-        <div class="flexrow spell-prop">
-            <p><strong>Tu Zeón acumulado:</strong></p>
-            ${
-              ((zeonAccum ?? 0) < spellData.zeon.value
-                ? '<p style="color: red">'
-                : '<p style="color: green">') +
-              (zeonAccum ?? 0) +
-              "</p>"
-            }
-        </div>
+        
+        ${!hasEnoughZeon ? '<p class="notification error">No tienes Zeón/inteligencia suficiente</p>' : ''}
     `;
 
-  const d = new Dialog({
-    title: "Vista previa",
-    content,
-    buttons:
-      (zeonAccum ?? 0) < Number(spellData.zeon.value) ||
-      tokenAttrs.intelligence.value < spellData.intRequired.value
-        ? {
-            confirm: {
-              label: "No tienes Zeón/inteligencia suficiente",
-              callback: () => {},
-              disabled: true,
-            },
-          }
-        : {
-            confirm: {
-              label: "Utilizar hechizo",
-              callback: () => {
-                stayPreviewOpen = false;
-                updateZeon(0, spell, spellData, selectedSpellGrade);
-              },
-              disabled: (zeonAccum ?? 0) < Number(spellData.zeon.value),
-            },
-            maintain: {
-              label:
-                isNaN(Number(spellData.maintenanceCost.value)) ||
-                Number(spellData.maintenanceCost.value) == 0
-                  ? "No se mantiene"
-                  : "Mantener",
-              callback: () => {
-                stayPreviewOpen = false;
-                updateZeon(1, spell, spellData, selectedSpellGrade);
-              },
-              disabled:
-                isNaN(Number(spellData.maintenanceCost.value)) ||
-                (zeonAccum ?? 0) < Number(spellData.zeon.value) ||
-                Number(spellData.maintenanceCost.value) == 0,
-            },
-          },
-    close: () => {
-      if (stayPreviewOpen) {
-        stayPreviewOpen = false;
-        d.render(true);
-      }
-    },
+  const buttons = [];
+
+  if (!canCast) {
+    buttons.push({
+      action: "insufficient",
+      label: "No tienes Zeón/inteligencia suficiente",
+      icon: "fas fa-exclamation-triangle",
+      disabled: true,
+    });
+  } else {
+    buttons.push({
+      action: "cast",
+      label: "Utilizar hechizo",
+      icon: "fas fa-magic",
+      default: true,
+      callback: () => "cast",
+    });
+
+    if (canMaintain) {
+      buttons.push({
+        action: "maintain",
+        label: "Mantener",
+        icon: "fas fa-hourglass-half",
+        callback: () => "maintain",
+      });
+    }
+  }
+
+  buttons.push({
+    action: "cancel",
+    label: "Cancelar",
+    icon: "fas fa-times",
   });
-  return d;
+
+  const result = await foundry.applications.api.DialogV2.wait({
+    window: { 
+      title: "Vista previa del hechizo",
+      contentClasses: ["standard-form"]
+    },
+    position: {
+      width: 500,
+      height: "auto"
+    },
+    content,
+    buttons,
+    rejectClose: false,
+  });
+
+  if (result === "cast") {
+    await updateZeon(0, spell, spellData, selectedSpellGrade);
+  } else if (result === "maintain") {
+    await updateZeon(1, spell, spellData, selectedSpellGrade);
+  }
 }
 
 async function updateZeon(mode, spell, spellData, selectedSpellGrade) {
@@ -305,4 +304,4 @@ for (const via in viaSpells) {
 }
 //const viaSpells = Object.groupBy(spells, ({ system }) => system.via.value);
 
-optionsDialog().render(true);
+optionsDialog();

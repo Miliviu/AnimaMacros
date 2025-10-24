@@ -230,26 +230,48 @@ function clearAccumulations(mode) {
     });
 }
 
-  function showClearAccumulationsDialog() {
-    new Dialog({
+async function showClearAccumulationsDialog() {
+  const content = `<p class="hint">¿Cómo quieres borrar las acumulaciones de ki?</p>`;
+
+  const result = await foundry.applications.api.DialogV2.wait({
+    window: { 
       title: "Borrar Acumulaciones",
-      content: "<p>¿Cómo quieres borrar las acumulaciones de ki?</p>",
-      buttons: {
-        afterUse: {
-          label: "Después de uso",
-          callback: () => clearAccumulations('despues de uso')
-        },
-        withoutUse: {
-          label: "Sin uso",
-          callback: () => clearAccumulations('sin uso')
-        },
-        cancel: {
-          label: "Cancelar"
-        }
+      contentClasses: ["standard-form"]
+    },
+    position: {
+      width: 400,
+      height: "auto"
+    },
+    content,
+    buttons: [
+      {
+        action: "afterUse",
+        label: "Después de uso",
+        icon: "fas fa-check",
+        callback: () => "afterUse",
       },
-      default: "cancel"
-    }).render(true);
+      {
+        action: "withoutUse",
+        label: "Sin uso",
+        icon: "fas fa-times",
+        callback: () => "withoutUse",
+      },
+      {
+        action: "cancel",
+        label: "Cancelar",
+        icon: "fas fa-ban",
+      },
+    ],
+    default: "cancel",
+    rejectClose: false,
+  });
+
+  if (result === "afterUse") {
+    clearAccumulations('despues de uso');
+  } else if (result === "withoutUse") {
+    clearAccumulations('sin uso');
   }
+}
 
 let agiAcum = token.actor.system.domine.kiAccumulation.agility.final.value;
 let conAcum = token.actor.system.domine.kiAccumulation.constitution.final.value;
@@ -259,146 +281,153 @@ let strAcum = token.actor.system.domine.kiAccumulation.strength.final.value;
 let wilAcum = token.actor.system.domine.kiAccumulation.willPower.final.value;
 let currentFatigue = token.actor.system.characteristics.secondaries.fatigue.value;
 
-let dialogContent = `
-<div>
-    <center><h3>Escoge los campos a acumular</h3></center>
-</div>
-<div>
-    <center><i>La Acumulación Parcial te permite acumular ki de forma pasiva mientras realizas otras acciones, al coste de reducir la acumulación a la mitad (Redondeado hacia arriba). La Acumulación Plena te permite acumular todo el ki que te correspondería, pero te inhibe de realizar acciones activas este turno</i></center>
-</div>
-<div class="flexrow flex-center">
-    <div class="flexcol">
-        <center>
-            <input id="AGIEnable" type="checkbox" checked/>
-            <h3>AGI</h3>
-            ${agiAcum}
-            <br>
-            <p style="color:#B22C2C";>V</p>
-            ${Math.round(agiAcum / 2)}
-        </center>
-    </div>
-    <div class="flexcol">
-        <center>
-            <input id="CONEnable" type="checkbox" checked/>
-            <h3>CON</h3>
-            ${conAcum}
-            <br>
-            <p style="color:#B22C2C";>V</p>
-            ${Math.round(conAcum / 2)}
-        </center>
-    </div>
-    <div class="flexcol">
-        <center>
-            <input id="DEXEnable" type="checkbox" checked/>
-            <h3>DES</h3>
-            ${dexAcum}
-            <br>
-            <p style="color:#B22C2C";>V</p>
-            ${Math.round(dexAcum / 2)}
-        </center>
-    </div>
-    <div class="flexcol">
-        <center>
-            <input id="POWEnable" type="checkbox" checked/>
-            <h3>POD</h3>
-            ${powAcum}
-            <br>
-            <p style="color:#B22C2C";>V</p>
-            ${Math.round(powAcum / 2)}
-        </center>
-    </div>
-    <div class="flexcol">
-        <center>
-            <input id="STREnable" type="checkbox" checked/>
-            <h3>FUE</h3>
-            ${strAcum}
-            <br>
-            <p style="color:#B22C2C";>V</p>
-            ${Math.round(strAcum / 2)}
-        </center>
-    </div>
-    <div class="flexcol">
-        <center>
-            <input id="WILEnable" type="checkbox" checked/>
-            <h3>VOL</h3>
-            ${wilAcum}
-            <br>
-            <p style="color:#B22C2C";>V</p>
-            ${Math.round(wilAcum / 2)}
-        </center>
-    </div>
-</div>
-<div class="flexrow flex-center">
-    <center>
-        <label for="currentFatigue">Cansancio Actual: </label>
+async function mainDialog() {
+  const dialogContent = `
+    <p class="hint">
+        La <strong>Acumulación Parcial</strong> te permite acumular ki de forma pasiva mientras realizas otras acciones, 
+        al coste de reducir la acumulación a la mitad (Redondeado hacia arriba). La <strong>Acumulación Plena</strong> 
+        te permite acumular todo el ki que te correspondería, pero te inhibe de realizar acciones activas este turno.
+    </p>
+
+    <fieldset>
+        <legend>Selecciona los campos a acumular</legend>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
+            <div class="form-group stacked">
+                <label>
+                    <input id="AGIEnable" type="checkbox" checked/>
+                    <strong>AGI</strong>
+                </label>
+                <span>Plena: ${agiAcum}</span>
+                <span style="color: var(--color-level-error);">Parcial: ${Math.round(agiAcum / 2)}</span>
+            </div>
+            <div class="form-group stacked">
+                <label>
+                    <input id="CONEnable" type="checkbox" checked/>
+                    <strong>CON</strong>
+                </label>
+                <span>Plena: ${conAcum}</span>
+                <span style="color: var(--color-level-error);">Parcial: ${Math.round(conAcum / 2)}</span>
+            </div>
+            <div class="form-group stacked">
+                <label>
+                    <input id="DEXEnable" type="checkbox" checked/>
+                    <strong>DES</strong>
+                </label>
+                <span>Plena: ${dexAcum}</span>
+                <span style="color: var(--color-level-error);">Parcial: ${Math.round(dexAcum / 2)}</span>
+            </div>
+            <div class="form-group stacked">
+                <label>
+                    <input id="POWEnable" type="checkbox" checked/>
+                    <strong>POD</strong>
+                </label>
+                <span>Plena: ${powAcum}</span>
+                <span style="color: var(--color-level-error);">Parcial: ${Math.round(powAcum / 2)}</span>
+            </div>
+            <div class="form-group stacked">
+                <label>
+                    <input id="STREnable" type="checkbox" checked/>
+                    <strong>FUE</strong>
+                </label>
+                <span>Plena: ${strAcum}</span>
+                <span style="color: var(--color-level-error);">Parcial: ${Math.round(strAcum / 2)}</span>
+            </div>
+            <div class="form-group stacked">
+                <label>
+                    <input id="WILEnable" type="checkbox" checked/>
+                    <strong>VOL</strong>
+                </label>
+                <span>Plena: ${wilAcum}</span>
+                <span style="color: var(--color-level-error);">Parcial: ${Math.round(wilAcum / 2)}</span>
+            </div>
+        </div>
+    </fieldset>
+
+    <div class="form-group stacked">
+        <label>Cansancio Actual</label>
         <span id="currentFatigue">${currentFatigue}</span>
-    </center>
-</div>
-<div class="flexrow flex-center">
-    <center>
-        <label for="fatigueInput">Cansancio Usado: </label>
+    </div>
+    <div class="form-group">
+        <label for="fatigueInput">Cansancio Usado</label>
         <input id="fatigueInput" type="number" min="0" value="0"/>
-    </center>
-</div>
-<br>
-`;
+    </div>
+  `;
 
-let stayOpen = false;
-
-let d = new Dialog({
-    title: "Ki Accumulation",
-    content: dialogContent,
-    buttons: {
-        done: {
-            label: "Acum. Plena",
-            callback: (html) => {
-                const agiChecked = html[0].querySelector("#AGIEnable").checked;
-                const conChecked = html[0].querySelector("#CONEnable").checked;
-                const dexChecked = html[0].querySelector("#DEXEnable").checked;
-                const strChecked = html[0].querySelector("#STREnable").checked;
-                const powChecked = html[0].querySelector("#POWEnable").checked;
-                const wilChecked = html[0].querySelector("#WILEnable").checked;
-                const fatigueUsed = parseInt(html[0].querySelector("#fatigueInput").value) || 0;
-
-                if (!agiChecked && !conChecked && !dexChecked && !strChecked && !powChecked && !wilChecked) {
-                    stayOpen = true;
-                    throw new Error("SELECCIONA AL MENOS UN CAMPO A ACUMULAR");
-                } else {
-                    stayOpen = false;
-                    updateAcumulation(0, agiChecked, conChecked, dexChecked, strChecked, powChecked, wilChecked, fatigueUsed);
-                }
-            }
-        },
-        show: {
-            label: "Acum. Parcial",
-            callback: (html) => {
-                const agiChecked = html[0].querySelector("#AGIEnable").checked;
-                const conChecked = html[0].querySelector("#CONEnable").checked;
-                const dexChecked = html[0].querySelector("#DEXEnable").checked;
-                const strChecked = html[0].querySelector("#STREnable").checked;
-                const powChecked = html[0].querySelector("#POWEnable").checked;
-                const wilChecked = html[0].querySelector("#WILEnable").checked;
-                const fatigueUsed = parseInt(html[0].querySelector("#fatigueInput").value) || 0;
-
-                if (!agiChecked && !conChecked && !dexChecked && !strChecked && !powChecked && !wilChecked) {
-                    stayOpen = true;
-                    throw new Error("SELECCIONA AL MENOS UN CAMPO A ACUMULAR");
-                } else {
-                    stayOpen = false;
-                    updateAcumulation(1, agiChecked, conChecked, dexChecked, strChecked, powChecked, wilChecked, fatigueUsed);
-                }
-            }
-        },
-        clear: {
-            label: "Borrar Acumulaciones",
-            callback: (html) => showClearAccumulationsDialog()
-          }
+  const result = await foundry.applications.api.DialogV2.wait({
+    window: { 
+      title: "Acumulación de Ki",
+      contentClasses: ["standard-form"]
     },
-    default: "done",
-    close: () => {
-        if (stayOpen) {
-            stayOpen = false;
-            d.render(true);
-        }
-    }
-    }).render(true);
+    position: {
+      width: 600,
+      height: "auto"
+    },
+    content: dialogContent,
+    buttons: [
+      {
+        action: "full",
+        label: "Acum. Plena",
+        icon: "fas fa-battery-full",
+        default: true,
+        callback: (event, button, dialog) => {
+          const html = dialog.element;
+          return {
+            action: "full",
+            agiChecked: html.querySelector("#AGIEnable").checked,
+            conChecked: html.querySelector("#CONEnable").checked,
+            dexChecked: html.querySelector("#DEXEnable").checked,
+            strChecked: html.querySelector("#STREnable").checked,
+            powChecked: html.querySelector("#POWEnable").checked,
+            wilChecked: html.querySelector("#WILEnable").checked,
+            fatigueUsed: parseInt(html.querySelector("#fatigueInput").value) || 0,
+          };
+        },
+      },
+      {
+        action: "partial",
+        label: "Acum. Parcial",
+        icon: "fas fa-battery-half",
+        callback: (event, button, dialog) => {
+          const html = dialog.element;
+          return {
+            action: "partial",
+            agiChecked: html.querySelector("#AGIEnable").checked,
+            conChecked: html.querySelector("#CONEnable").checked,
+            dexChecked: html.querySelector("#DEXEnable").checked,
+            strChecked: html.querySelector("#STREnable").checked,
+            powChecked: html.querySelector("#POWEnable").checked,
+            wilChecked: html.querySelector("#WILEnable").checked,
+            fatigueUsed: parseInt(html.querySelector("#fatigueInput").value) || 0,
+          };
+        },
+      },
+      {
+        action: "clear",
+        label: "Borrar Acumulaciones",
+        icon: "fas fa-eraser",
+        callback: () => "clear",
+      },
+    ],
+    rejectClose: false,
+  });
+
+  if (!result) return;
+
+  if (result === "clear") {
+    await showClearAccumulationsDialog();
+    return;
+  }
+
+  const { agiChecked, conChecked, dexChecked, strChecked, powChecked, wilChecked, fatigueUsed } = result;
+
+  if (!agiChecked && !conChecked && !dexChecked && !strChecked && !powChecked && !wilChecked) {
+    ui.notifications.error("SELECCIONA AL MENOS UN CAMPO A ACUMULAR");
+    await mainDialog(); // Re-open the dialog
+    return;
+  }
+
+  const mode = result.action === "full" ? 0 : 1;
+  await updateAcumulation(mode, agiChecked, conChecked, dexChecked, strChecked, powChecked, wilChecked, fatigueUsed);
+}
+
+mainDialog();

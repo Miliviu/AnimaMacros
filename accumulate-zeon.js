@@ -5,8 +5,6 @@ let zeonAcum = token.actor.system.mystic.zeon.accumulated;
 let fatigueCurr = token.actor.system.characteristics.secondaries.fatigue.value;
 let zeonMant = token.actor.system.mystic.zeonMaintained.value;
 
-let stayOpen = false;
-
 if (zeonAcum == null) {
   zeonAcum = 0;
 }
@@ -131,217 +129,357 @@ async function modifyZeonMaintainedDialog() {
       ? maintainedPerTurn
           .map(
             (spell) => `
-      <li id="spell-${spell._id}" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-bottom: 5px;">
-          <div>
-              <span><b>${spell.name}</b></span><br>
-              <span>Coste: ${spell.system.cost.value} Zeón/turno</span>
+      <li class="spell-item" data-spell-id="${spell._id}">
+          <div class="spell-info">
+              <strong>${spell.name}</strong>
+              <span class="spell-cost">Coste: ${spell.system.cost.value} Zeón/turno</span>
           </div>
-          <button data-spell-id="${spell._id}" class="delete-spell-per-turn" style="margin-left: auto; background-color: #d9534f; color: white; border: none; border-radius: 5px; cursor: pointer; width: 100px;">
-              Eliminar
+          <button type="button" data-spell-id="${spell._id}" data-action="delete-per-turn" class="delete-spell-per-turn">
+              <i class="fas fa-times"></i> Eliminar
           </button>
       </li>
   `
           )
           .join("")
-      : "<li>No tienes hechizos mantenidos por turno.</li>";
+      : "<li class='empty-message'>No tienes hechizos mantenidos por turno.</li>";
 
   let spellListDaily =
     maintainedDaily.length > 0
       ? maintainedDaily
           .map(
             (spell) => `
-      <li id="spell-${spell._id}" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-bottom: 10px;">
-          <div>
-              <span><b>${spell.name}</b></span><br>
-              <span>Coste: ${spell.system.cost.value} Zeón/día</span>
+      <li class="spell-item" data-spell-id="${spell._id}">
+          <div class="spell-info">
+              <strong>${spell.name}</strong>
+              <span class="spell-cost">Coste: ${spell.system.cost.value} Zeón/día</span>
           </div>
-          <button data-spell-id="${spell._id}" class="delete-spell-daily" style="margin-left: auto; background-color: #d9534f; color: white; border: none; border-radius: 5px; cursor: pointer; width: 120px;">
-              Eliminar
+          <button type="button" data-spell-id="${spell._id}" data-action="delete-daily" class="delete-spell-daily">
+              <i class="fas fa-times"></i> Eliminar
           </button>
       </li>
   `
           )
           .join("")
-      : "<li>No tienes hechizos mantenidos diarios.</li>";
-      let content = `
-      <div style="display: flex; flex-direction: column; height: 100%;">
-          <div style="flex-grow: 1; overflow-y: auto; padding: 10px;">
-              <div style="min-height: 180px;">
-                  <h3>Hechizos mantenidos por turno:</h3>
-                  <ul id="list-per-turn" style="min-height: 160px; border: 1px solid #ccc; padding: 10px; max-height: 150px; overflow-y: auto;">
-                      ${spellListPerTurn}
-                  </ul>
-              </div>
-              <div style="min-height: 180px;">
-                  <h3>Hechizos mantenidos diarios:</h3>
-                  <ul id="list-daily" style="min-height: 160px; border: 1px solid #ccc; padding: 10px; max-height: 150px; overflow-y: auto;">
-                      ${spellListDaily}
-                  </ul>
-              </div>
-          </div>
-          <div style="padding: 10px; border-top: 1px solid #ccc; display: flex; justify-content: flex-end;">
-              <button class="cancel-button" style="cursor: pointer; height: 40px; padding: 0 15px;">Cerrar</button>
-          </div>
-      </div>
-    `;
-    
-    let dialog = new Dialog({
-        title: "Modificar Zeon Mantenido",
-        content: content,
-        buttons: {}, 
-        render: (html) => {
-            html.find(".delete-spell-per-turn").on("click", async (event) => {
-                let spellId = event.currentTarget.dataset.spellId;
-                let spell = maintainedPerTurn.find((spell) => spell._id === spellId);
-            
-                if (!spell) return;
-            
-                let spellCost = spell.system.cost.value;
-                let spellName = spell.name;
-            
-                maintainedPerTurn = maintainedPerTurn.filter((spell) => spell._id !== spellId);
-            
-                await token.actor.update({
-                    "system.mystic.zeonMaintained.value": (Number(zeonMant) ?? 0) - Number(spellCost),
-                    "system.mystic.selectedSpells": maintainedPerTurn,
-                });
-            
-                html.find(`#spell-${spellId}`).remove();
-            
-                ChatMessage.create({
-                    user: game.user._id,
-                    speaker: ChatMessage.getSpeaker({ token: actor }),
-                    content: `<b>${token.name}</b> ha dejado de mantener el hechizo <b><span style="font-weight: bold; color: #6b4423; font-style: italic;">${spellName}</span></b>.`,
-                });
-            
-                zeonMant -= spellCost;
-            });
-          html.find(".delete-spell-daily").on("click", async (event) => {
-            let spellId = event.currentTarget.dataset.spellId;
-            spellName = maintainedDaily.find((spell) => spell._id === spellId).name;
-            maintainedDaily = maintainedDaily.filter(
-              (spell) => spell._id !== spellId
-            );
-            await token.actor.update({
-              "system.mystic.spellMaintenances": maintainedDaily,
-            });
-            html.find(`#spell-${spellId}`).remove();
+      : "<li class='empty-message'>No tienes hechizos mantenidos diarios.</li>";
+
+  const content = `
+      <style>
+          .spell-list {
+              list-style: none;
+              padding: 0;
+              margin: 1rem 0;
+              max-height: 200px;
+              overflow-y: auto;
+              border: 1px solid var(--color-border-dark-tertiary);
+              border-radius: 4px;
+          }
+          .spell-item {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              padding: 0.75rem;
+              border-bottom: 1px solid var(--color-border-dark-tertiary);
+          }
+          .spell-item:last-child {
+              border-bottom: none;
+          }
+          .spell-info {
+              display: flex;
+              flex-direction: column;
+              gap: 0.25rem;
+          }
+          .spell-cost {
+              font-size: 0.9em;
+              color: var(--color-text-dark-secondary);
+          }
+          .spell-item button {
+              white-space: nowrap;
+          }
+          .empty-message {
+              padding: 1rem;
+              text-align: center;
+              color: var(--color-text-dark-secondary);
+              font-style: italic;
+          }
+      </style>
+      <fieldset>
+          <legend>Hechizos mantenidos por turno</legend>
+          <ul class="spell-list" id="list-per-turn">
+              ${spellListPerTurn}
+          </ul>
+      </fieldset>
       
-            ChatMessage.create({
-              user: game.user._id,
-              speaker: ChatMessage.getSpeaker({ token: actor }),
-              content: `<b>${token.name}</b> ha dejado de mantener el hechizo <b><span style="font-weight: bold; color: #6b4423; font-style: italic;">${spellName}</span></b>.`,
-            });
+      <fieldset>
+          <legend>Hechizos mantenidos diarios</legend>
+          <ul class="spell-list" id="list-daily">
+              ${spellListDaily}
+          </ul>
+      </fieldset>
+  `;
+
+  const result = await foundry.applications.api.DialogV2.wait({
+    window: { 
+      title: "Modificar Zeón Mantenido",
+      contentClasses: ["standard-form"]
+    },
+    position: {
+      width: 550,
+      height: "auto"
+    },
+    content,
+    buttons: [
+      {
+        action: "close",
+        label: "Cerrar",
+        icon: "fas fa-times",
+      },
+    ],
+    render: (event, button, dialog) => {
+      const html = dialog.element;
+
+      html.querySelectorAll(".delete-spell-per-turn").forEach((btn) => {
+        btn.addEventListener("click", async (event) => {
+          const spellId = event.currentTarget.dataset.spellId;
+          const spell = maintainedPerTurn.find((s) => s._id === spellId);
+
+          if (!spell) return;
+
+          const spellCost = spell.system.cost.value;
+          const spellName = spell.name;
+
+          maintainedPerTurn = maintainedPerTurn.filter((s) => s._id !== spellId);
+
+          await token.actor.update({
+            "system.mystic.zeonMaintained.value":
+              (Number(zeonMant) ?? 0) - Number(spellCost),
+            "system.mystic.selectedSpells": maintainedPerTurn,
           });
-      
-          html.find(".cancel-button").on("click", () => {
-            dialog.close();
+
+          const listItem = html.querySelector(`li[data-spell-id="${spellId}"]`);
+          if (listItem) listItem.remove();
+
+          ChatMessage.create({
+            user: game.user._id,
+            speaker: ChatMessage.getSpeaker({ token: actor }),
+            content: `<b>${token.name}</b> ha dejado de mantener el hechizo <b>${spellName}</b>.`,
           });
-        },
-      }).render(true);
+
+          zeonMant -= spellCost;
+        });
+      });
+
+      html.querySelectorAll(".delete-spell-daily").forEach((btn) => {
+        btn.addEventListener("click", async (event) => {
+          const spellId = event.currentTarget.dataset.spellId;
+          const spell = maintainedDaily.find((s) => s._id === spellId);
+
+          if (!spell) return;
+
+          const spellName = spell.name;
+
+          maintainedDaily = maintainedDaily.filter((s) => s._id !== spellId);
+
+          await token.actor.update({
+            "system.mystic.spellMaintenances": maintainedDaily,
+          });
+
+          const listItem = html.querySelector(`li[data-spell-id="${spellId}"]`);
+          if (listItem) listItem.remove();
+
+          ChatMessage.create({
+            user: game.user._id,
+            speaker: ChatMessage.getSpeaker({ token: actor }),
+            content: `<b>${token.name}</b> ha dejado de mantener el hechizo <b>${spellName}</b>.`,
+          });
+        });
+      });
+    },
+    rejectClose: false,
+  });
 }
 
-let dialogContent = `
-    <div>
-        <center><h3>Acumulación de zeón</h3></center>
-    </div>
-    <div>
-        <center><i>La Acumulación Parcial te permite acumular zeon de forma pasiva mientras realizas otras acciones, al coste de reducir la acumulación a la mitad. La Acumulación Plena te permite acumular todo el zeon que te correspondería, pero te inhibe de realizar acciones activas este turno fuera de lanzar conjuros.</i></center>
-    </div>
-    <div>
-        <center>
-            <h2>Zeon acumulado: ${zeonAcum}</h2>
-            Zeon máximo: ${zeonBaseTotal}, Zeon actual: ${zeonBaseCurr}<br>
-            Fatiga actual: ${fatigueCurr}, Zeon Mantenido: ${zeonMant}
-        </center>
-    </div>
-    <div class="flexrow flex-center">
-        <div class="flexrow">
-            <center>
-                <h2>ACT Plena</h2> ${zeonACT} <br>
-            </center>
+async function mainDialog() {
+  const dialogContent = `
+    <p class="hint">
+        La <strong>Acumulación Parcial</strong> te permite acumular zeón de forma pasiva mientras realizas otras acciones, 
+        al coste de reducir la acumulación a la mitad. La <strong>Acumulación Plena</strong> te permite acumular todo el 
+        zeón que te correspondería, pero te inhibe de realizar acciones activas este turno fuera de lanzar conjuros.
+    </p>
+    
+    <fieldset>
+        <legend>Estado Actual</legend>
+        <div class="form-group stacked">
+            <label>Zeón acumulado</label>
+            <span style="font-weight: bold; font-size: 1.3em;">${zeonAcum}</span>
         </div>
-        <div class="flexrow">
-            <center>
-                <h2>ACT Parcial</h2> ${Math.round(zeonACT / 2)} <br>
-            </center>
+        <div class="form-group stacked">
+            <label>Zeón máximo / actual</label>
+            <span>${zeonBaseTotal} / ${zeonBaseCurr}</span>
         </div>
-    </div>
-    <div class="form-group">
-        <label for="cansancioUsado">Cansancio Usado:</label>
-        <input type="number" id="cansancioUsado" name="cansancioUsado" value="0">
-    </div>
-    <div class="form-group">
-        <label for="cansancioModificacion">Cansancio Modificación:</label>
-        <input type="number" id="cansancioModificacion" name="cansancioModificacion" value="15">
-    </div>
-    <br>
-`;
+        <div class="form-group stacked">
+            <label>Fatiga actual</label>
+            <span>${fatigueCurr}</span>
+        </div>
+        <div class="form-group stacked">
+            <label>Zeón Mantenido</label>
+            <span>${zeonMant}</span>
+        </div>
+    </fieldset>
 
-let d = new Dialog({
-    title: "Zeón Accumulation",
+    <fieldset>
+        <legend>ACT de Acumulación</legend>
+        <div class="form-group stacked">
+            <label>ACT Plena</label>
+            <span style="font-weight: bold; color: var(--color-level-success);">${zeonACT}</span>
+        </div>
+        <div class="form-group stacked">
+            <label>ACT Parcial</label>
+            <span style="font-weight: bold; color: var(--color-level-info);">${Math.round(zeonACT / 2)}</span>
+        </div>
+    </fieldset>
+
+    <div class="form-group">
+        <label for="cansancioUsado">Cansancio Usado</label>
+        <input type="number" id="cansancioUsado" name="cansancioUsado" value="0" min="0">
+    </div>
+    <div class="form-group">
+        <label for="cansancioModificacion">Cansancio Modificación</label>
+        <input type="number" id="cansancioModificacion" name="cansancioModificacion" value="15" min="1">
+    </div>
+  `;
+
+  const result = await foundry.applications.api.DialogV2.wait({
+    window: { 
+      title: "Acumulación de Zeón",
+      contentClasses: ["standard-form"]
+    },
+    position: {
+      width: 500,
+      height: "auto"
+    },
     content: dialogContent,
-    buttons: {
-      regenerate: {
+    buttons: [
+      {
+        action: "regenerate",
         label: "Regenerar Zeón",
-        callback: () => {
-          regenerateZeon();
-        },
+        icon: "fas fa-heart",
+        callback: () => "regenerate",
       },
-      accumulate: {
+      {
+        action: "accumulate",
         label: "Acumular",
-        callback: (html) => {
-          let cansancioUsado = parseFloat(html.find("#cansancioUsado").val()) || 0;
-          let cansancioModificacion = parseFloat(html.find("#cansancioModificacion").val()) || 1;
-          new Dialog({
-            title: "Tipo de Acumulación",
-            content: "<p>¿Qué tipo de acumulación deseas realizar?</p>",
-            buttons: {
-              full: {
-                label: "Acumulación Plena",
-                callback: () => updateAcumulation(0, cansancioUsado, cansancioModificacion)
-              },
-              partial: {
-                label: "Acumulación Parcial",
-                callback: () => updateAcumulation(1, cansancioUsado, cansancioModificacion)
-              }
-            },
-            default: "full"
-          }).render(true);
+        icon: "fas fa-battery-three-quarters",
+        default: true,
+        callback: (event, button, dialog) => {
+          const html = dialog.element;
+          const cansancioUsado = parseFloat(html.querySelector("#cansancioUsado").value) || 0;
+          const cansancioModificacion = parseFloat(html.querySelector("#cansancioModificacion").value) || 1;
+          return { action: "accumulate", cansancioUsado, cansancioModificacion };
         },
       },
-      return: {
+      {
+        action: "return",
         label: "Devolver Zeón",
-        callback: async () => {
-          new Dialog({
-            title: "Opciones de Devolución",
-            content: "<p>Selecciona una opción para devolver el zeón acumulado:</p>",
-            buttons: {
-              all: {
-                label: "Devolver Todo",
-                callback: () => returnAccumulatedZeon("all"),
-              },
-              minusTen: {
-                label: "Devolver Todo -10",
-                callback: () => returnAccumulatedZeon("minusTen"),
-              },
-            },
-            default: "all",
-          }).render(true);
-        },
+        icon: "fas fa-undo",
+        callback: () => "return",
       },
-      modify: {
+      {
+        action: "modify",
         label: "Hechizos Mantenidos",
-        callback: () => {
-          modifyZeonMaintainedDialog();
-        },
+        icon: "fas fa-list",
+        callback: () => "modify",
       },
+    ],
+    rejectClose: false,
+  });
+
+  if (!result) return;
+
+  if (result === "regenerate") {
+    await regenerateZeon();
+  } else if (result.action === "accumulate") {
+    await accumulateDialog(result.cansancioUsado, result.cansancioModificacion);
+  } else if (result === "return") {
+    await returnDialog();
+  } else if (result === "modify") {
+    await modifyZeonMaintainedDialog();
+  }
+}
+
+async function accumulateDialog(cansancioUsado, cansancioModificacion) {
+  const content = `<p class="hint">¿Qué tipo de acumulación deseas realizar?</p>`;
+
+  const result = await foundry.applications.api.DialogV2.wait({
+    window: { 
+      title: "Tipo de Acumulación",
+      contentClasses: ["standard-form"]
     },
-    default: "accumulate",
-    close: () => {
-      if (stayOpen) {
-        stayOpen = false;
-        d.render(true);
-      }
+    position: {
+      width: 400,
+      height: "auto"
     },
-  }).render(true);
+    content,
+    buttons: [
+      {
+        action: "full",
+        label: "Acumulación Plena",
+        icon: "fas fa-battery-full",
+        default: true,
+        callback: () => "full",
+      },
+      {
+        action: "partial",
+        label: "Acumulación Parcial",
+        icon: "fas fa-battery-half",
+        callback: () => "partial",
+      },
+    ],
+    rejectClose: false,
+  });
+
+  if (result === "full") {
+    await updateAcumulation(0, cansancioUsado, cansancioModificacion);
+  } else if (result === "partial") {
+    await updateAcumulation(1, cansancioUsado, cansancioModificacion);
+  }
+}
+
+async function returnDialog() {
+  const content = `<p class="hint">Selecciona una opción para devolver el zeón acumulado:</p>`;
+
+  const result = await foundry.applications.api.DialogV2.wait({
+    window: { 
+      title: "Opciones de Devolución",
+      contentClasses: ["standard-form"]
+    },
+    position: {
+      width: 400,
+      height: "auto"
+    },
+    content,
+    buttons: [
+      {
+        action: "all",
+        label: "Devolver Todo",
+        icon: "fas fa-undo",
+        default: true,
+        callback: () => "all",
+      },
+      {
+        action: "minusTen",
+        label: "Devolver Todo -10",
+        icon: "fas fa-undo",
+        callback: () => "minusTen",
+      },
+    ],
+    rejectClose: false,
+  });
+
+  if (result === "all") {
+    await returnAccumulatedZeon("all");
+  } else if (result === "minusTen") {
+    await returnAccumulatedZeon("minusTen");
+  }
+}
+
+mainDialog();

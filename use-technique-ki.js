@@ -1,180 +1,140 @@
 if (!token) {
-    ui.notifications.error("No token selected");
+  ui.notifications.error("No token selected");
+  return;
+}
+
+const techniques = Object.values(token.actor.system.domine.techniques || {});
+
+if (techniques.length === 0) {
+  ui.notifications.error("No techniques found on character");
+  return;
+}
+
+const kiAccum = token.actor.system.domine.kiAccumulation;
+
+const charNames = {
+  strength: "FUE",
+  agility: "AGI",
+  dexterity: "DES",
+  constitution: "CON",
+  willPower: "VOL",
+  power: "POD"
+};
+
+async function useTechnique(techniqueId) {
+  const technique = techniques.find(t => t._id === techniqueId);
+  if (!technique) {
+    ui.notifications.error("Técnica no encontrada");
     return;
   }
-  
-  const techniquesObj = token.actor.system.domine.techniques || {};
-  
-  const techniquesArray = Object.values(techniquesObj);
-  
-  if (techniquesArray.length === 0) {
-    ui.notifications.error("No techniques found on character");
-    return;
-  }
-  
-  const tokenAcum = token.actor.system.domine.kiAccumulation;
-  
-  const accumulatedKi = {
-    strength: tokenAcum.strength.accumulated.value || 0,
-    agility: tokenAcum.agility.accumulated.value || 0,
-    dexterity: tokenAcum.dexterity.accumulated.value || 0,
-    constitution: tokenAcum.constitution.accumulated.value || 0,
-    willPower: tokenAcum.willPower.accumulated.value || 0,
-    power: tokenAcum.power.accumulated.value || 0,
+
+  const costs = {
+    strength: parseInt(technique.system.strength.value) || 0,
+    agility: parseInt(technique.system.agility.value) || 0,
+    dexterity: parseInt(technique.system.dexterity.value) || 0,
+    constitution: parseInt(technique.system.constitution.value) || 0,
+    willPower: parseInt(technique.system.willPower.value) || 0,
+    power: parseInt(technique.system.power.value) || 0
   };
-  
-  let dialogContent = `
-  <div>
-      <h3>Selecciona una Técnica para Usar</h3>
-      <select id="techniqueSelect" style="width:100%">
-  `;
-  
-  for (let technique of techniquesArray) {
-    dialogContent += `<option value="${technique._id}">${technique.name}</option>`;
+
+  // Check if enough Ki
+  for (const [attr, cost] of Object.entries(costs)) {
+    if (cost > 0 && kiAccum[attr].accumulated.value < cost) {
+      ui.notifications.error(`No tienes suficiente Ki en ${charNames[attr]}: necesitas ${cost}, tienes ${kiAccum[attr].accumulated.value}`);
+      return;
+    }
   }
-  
-  dialogContent += `
+
+  // Deduct Ki and move to reserve
+  const updates = {};
+  let reserve = kiAccum.generic.value || 0;
+
+  for (const [attr, cost] of Object.entries(costs)) {
+    const current = kiAccum[attr].accumulated.value;
+    if (cost > 0) {
+      updates[`system.domine.kiAccumulation.${attr}.accumulated.value`] = current - cost;
+      reserve += current - cost;
+    } else {
+      reserve += current;
+    }
+    updates[`system.domine.kiAccumulation.${attr}.accumulated.value`] = 0;
+  }
+
+  updates["system.domine.kiAccumulation.generic.value"] = reserve;
+  await token.actor.update(updates);
+
+  // Chat message
+  const desc = technique.system.description.value || "";
+  let msg = `<b>${token.name}</b> usa <b>${technique.name}</b>`;
+  if (desc) msg += `<div>${desc}</div>`;
+  ChatMessage.create({ content: msg });
+}
+
+async function mainDialog() {
+  let options = "";
+  for (const tech of techniques) {
+    options += `<option value="${tech._id}">${tech.name}</option>`;
+  }
+
+  // Build Ki accumulation info
+  let kiInfoContent = `<fieldset><legend>Ki Acumulado</legend><div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem;">`;
+  for (const [attr, name] of Object.entries(charNames)) {
+    const accumulated = kiAccum[attr].accumulated.value;
+    kiInfoContent += `
+      <div class="form-group stacked">
+        <label>${name}</label>
+        <span>${accumulated}</span>
+      </div>
+    `;
+  }
+  kiInfoContent += `</div></fieldset>`;
+
+  const dialogContent = `
+    <p class="hint">
+      Selecciona la técnica que deseas usar. El coste de Ki será verificado y deducido automáticamente.
+    </p>
+    <div class="form-group">
+      <label for="techniqueSelect">Técnica</label>
+      <select id="techniqueSelect" name="technique">
+        ${options}
       </select>
-  </div>
-  <div id="kiInfo" style="margin-top: 10px;">
-      <!-- Ki information will be populated here -->
-  </div>
+    </div>
+    ${kiInfoContent}
   `;
-  
-  new Dialog({
-    title: "Usar Técnica",
+
+  const result = await foundry.applications.api.DialogV2.wait({
+    window: { 
+      title: "Usar Técnica",
+      contentClasses: ["standard-form"]
+    },
+    position: {
+      width: 450,
+      height: "auto"
+    },
     content: dialogContent,
-    buttons: {
-      use: {
+    buttons: [
+      {
+        action: "use",
         label: "Usar Técnica",
-        callback: (html) => {
-          const selectedTechniqueId = html.find("#techniqueSelect").val();
-          useTechnique(selectedTechniqueId);
-        },
+        icon: "fas fa-hand-sparkles",
+        default: true,
+        callback: (event, button, dialog) => {
+          return dialog.element.querySelector("#techniqueSelect").value;
+        }
       },
-    },
-    render: (html) => {
-      const select = html.find("#techniqueSelect");
-      select.on("change", () => updateKiInfo(html));
-      updateKiInfo(html);
-    },
-  }).render(true);
-  
-  function updateKiInfo(html) {
-    const selectedTechniqueId = html.find("#techniqueSelect").val();
-    const technique = techniquesArray.find((t) => t._id === selectedTechniqueId);
-    if (!technique) {
-      html.find("#kiInfo").html("Técnica no encontrada");
-      return;
-    }
-  
-    const charNames = {
-      strength: "FUE",
-      agility: "AGI",
-      dexterity: "DES",
-      constitution: "CON",
-      willPower: "VOL",
-      power: "POD",
-    };
-  
-    const kiCosts = {
-      strength: parseInt(technique.system.strength.value) || 0,
-      agility: parseInt(technique.system.agility.value) || 0,
-      dexterity: parseInt(technique.system.dexterity.value) || 0,
-      constitution: parseInt(technique.system.constitution.value) || 0,
-      willPower: parseInt(technique.system.willPower.value) || 0,
-      power: parseInt(technique.system.power.value) || 0,
-    };
-  
-    const kiReserve = token.actor.system.domine.kiAccumulation.generic.value || 0;
-  
-    let kiInfoContent = `<h4>Ki Acumulado:</h4>
-    <ul>
-      <li><strong>Reserva de Ki:</strong> ${kiReserve}</li>`;
-  
-    for (let char of Object.keys(charNames)) {
-      kiInfoContent += `<li><strong>${charNames[char]}:</strong> ${accumulatedKi[char]}</li>`;
-    }
-  
-    kiInfoContent += `</ul>`;
-  
-    kiInfoContent += `<h4>Coste de Ki de la Técnica:</h4>
-    <ul>`;
-  
-    let totalKiCost = 0;
-  
-    for (let char of Object.keys(charNames)) {
-      if (kiCosts[char] > 0) {
-        kiInfoContent += `<li><strong>${charNames[char]}:</strong> ${kiCosts[char]}</li>`;
-        totalKiCost += kiCosts[char];
+      {
+        action: "cancel",
+        label: "Cancelar",
+        icon: "fas fa-times"
       }
-    }
-  
-    kiInfoContent += `</ul>`;
-    kiInfoContent += `<p><strong>Coste Total de Ki:</strong> ${totalKiCost}</p>`;
-  
-    html.find("#kiInfo").html(kiInfoContent);
+    ],
+    rejectClose: false
+  });
+
+  if (result) {
+    await useTechnique(result);
   }
-  
-  function useTechnique(techniqueId) {
-    const technique = techniquesArray.find((t) => t._id === techniqueId);
-    if (!technique) {
-      ui.notifications.error("Técnica no encontrada");
-      return;
-    }
-  
-    const charNames = {
-      strength: "FUE",
-      agility: "AGI",
-      dexterity: "DES",
-      constitution: "CON",
-      willPower: "VOL",
-      power: "POD",
-    };
-  
-    const kiCosts = {
-      strength: parseInt(technique.system.strength.value) || 0,
-      agility: parseInt(technique.system.agility.value) || 0,
-      dexterity: parseInt(technique.system.dexterity.value) || 0,
-      constitution: parseInt(technique.system.constitution.value) || 0,
-      willPower: parseInt(technique.system.willPower.value) || 0,
-      power: parseInt(technique.system.power.value) || 0,
-    };
-  
-    const kiAccumulation = token.actor.system.domine.kiAccumulation;
-  
-    for (let char of Object.keys(kiCosts)) {
-      if (kiCosts[char] > 0 && kiAccumulation[char].accumulated.value < kiCosts[char]) {
-        ui.notifications.error(`No tienes suficiente Ki acumulado en ${charNames[char]} para usar esta técnica`);
-        return;
-      }
-    }
-  
-    const updates = {};
-    let kiReserve = kiAccumulation.generic.value || 0;
-  
-    for (let char of Object.keys(kiCosts)) {
-      const accumulated = kiAccumulation[char].accumulated.value;
-      const cost = kiCosts[char];
-  
-      if (cost > 0) {
-        updates[`system.domine.kiAccumulation.${char}.accumulated.value`] = accumulated - cost;
-      }
-  
-      kiReserve += accumulated - (cost > 0 ? cost : 0);
-      updates[`system.domine.kiAccumulation.${char}.accumulated.value`] = 0;
-    }
-  
-    updates["system.domine.kiAccumulation.generic.value"] = kiReserve;
-  
-    token.actor.update(updates);
-  
-    let description = technique.system.description.value || "";
-    let chatMessage = `<b>${token.name}</b> ha usado la técnica: <b>${technique.name}</b>`;
-    if (description) {
-      chatMessage += `<div>${description}</div>`;
-    }
-  
-    ChatMessage.create({ content: chatMessage });
-  }
+}
+
+mainDialog();
   
