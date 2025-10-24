@@ -76,19 +76,6 @@ async function mainDialog() {
     options += `<option value="${tech._id}">${tech.name}</option>`;
   }
 
-  // Build Ki accumulation info
-  let kiInfoContent = `<fieldset><legend>Ki Acumulado</legend><div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem;">`;
-  for (const [attr, name] of Object.entries(charNames)) {
-    const accumulated = kiAccum[attr].accumulated.value;
-    kiInfoContent += `
-      <div class="form-group stacked">
-        <label>${name}</label>
-        <span>${accumulated}</span>
-      </div>
-    `;
-  }
-  kiInfoContent += `</div></fieldset>`;
-
   const dialogContent = `
     <p class="hint">
       Selecciona la técnica que deseas usar. El coste de Ki será verificado y deducido automáticamente.
@@ -99,7 +86,7 @@ async function mainDialog() {
         ${options}
       </select>
     </div>
-    ${kiInfoContent}
+    <div id="kiCostInfo"></div>
   `;
 
   const result = await foundry.applications.api.DialogV2.wait({
@@ -108,7 +95,7 @@ async function mainDialog() {
       contentClasses: ["standard-form"]
     },
     position: {
-      width: 450,
+      width: 500,
       height: "auto"
     },
     content: dialogContent,
@@ -128,6 +115,55 @@ async function mainDialog() {
         icon: "fas fa-times"
       }
     ],
+    render: (event, dialog) => {
+      const html = dialog.element;
+      const select = html.querySelector("#techniqueSelect");
+      const kiInfoDiv = html.querySelector("#kiCostInfo");
+
+      function updateKiInfo() {
+        const techniqueId = select.value;
+        const technique = techniques.find(t => t._id === techniqueId);
+        if (!technique) return;
+
+        const costs = {
+          strength: parseInt(technique.system.strength.value) || 0,
+          agility: parseInt(technique.system.agility.value) || 0,
+          dexterity: parseInt(technique.system.dexterity.value) || 0,
+          constitution: parseInt(technique.system.constitution.value) || 0,
+          willPower: parseInt(technique.system.willPower.value) || 0,
+          power: parseInt(technique.system.power.value) || 0
+        };
+
+        let info = `<fieldset><legend>Coste de Ki</legend><div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem;">`;
+        let hasCosts = false;
+
+        for (const [attr, cost] of Object.entries(costs)) {
+          if (cost > 0) {
+            hasCosts = true;
+            const current = kiAccum[attr].accumulated.value;
+            const sufficient = current >= cost;
+            info += `
+              <div class="form-group stacked">
+                <label>${charNames[attr]}</label>
+                <span style="color: ${sufficient ? 'var(--color-level-success)' : 'var(--color-level-error)'};">
+                  ${cost} / ${current}
+                </span>
+              </div>
+            `;
+          }
+        }
+
+        if (!hasCosts) {
+          info += `<p class="hint" style="grid-column: 1 / -1;">Esta técnica no requiere Ki.</p>`;
+        }
+
+        info += `</div></fieldset>`;
+        kiInfoDiv.innerHTML = info;
+      }
+
+      select.addEventListener("change", updateKiInfo);
+      updateKiInfo();
+    },
     rejectClose: false
   });
 
