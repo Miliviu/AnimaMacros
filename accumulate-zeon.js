@@ -162,6 +162,9 @@ async function modifyZeonMaintainedDialog() {
           .join("")
       : "<li class='empty-message'>No tienes hechizos mantenidos diarios.</li>";
 
+  const totalPerTurnCost = maintainedPerTurn.reduce((sum, spell) => sum + (Number(spell.system.cost.value) || 0), 0);
+  const totalDailyCost = maintainedDaily.reduce((sum, spell) => sum + (Number(spell.system.cost.value) || 0), 0);
+
   const content = `
       <style>
           .spell-list {
@@ -201,12 +204,37 @@ async function modifyZeonMaintainedDialog() {
               color: var(--color-text-dark-secondary);
               font-style: italic;
           }
+          .maintenance-footer {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              padding: 0.5rem;
+              background-color: var(--color-bg-option);
+              border-radius: 4px;
+              margin-top: 0.5rem;
+          }
+          .total-cost {
+              font-weight: bold;
+          }
+          .maintenance-footer button:disabled {
+              opacity: 0.5;
+              cursor: not-allowed;
+              background-color: #666;
+              color: #999;
+          }
       </style>
       <fieldset>
           <legend>Hechizos mantenidos por turno</legend>
           <ul class="spell-list" id="list-per-turn">
               ${spellListPerTurn}
           </ul>
+          <div class="maintenance-footer">
+              <span class="total-cost">Total: ${totalPerTurnCost} Zeón/turno</span>
+              ${zeonAcum < totalPerTurnCost ? '<p class="notification error">No tienes Zeón/inteligencia suficiente</p>' : ''}
+              <button type="button" id="maintain-per-turn" ${totalPerTurnCost === 0 || zeonAcum < totalPerTurnCost ? 'disabled' : ''}>
+                  <i class="fas fa-magic"></i> Mantener (Turno)
+              </button>
+          </div>
       </fieldset>
       
       <fieldset>
@@ -214,6 +242,13 @@ async function modifyZeonMaintainedDialog() {
           <ul class="spell-list" id="list-daily">
               ${spellListDaily}
           </ul>
+          <div class="maintenance-footer">
+              <span class="total-cost">Total: ${totalDailyCost} Zeón/día</span>
+              ${zeonAcum < totalDailyCost ? '<p class="notification error">No tienes Zeón/inteligencia suficiente</p>' : ''}
+              <button type="button" id="maintain-daily" ${totalDailyCost === 0 || zeonAcum < totalDailyCost ? 'disabled' : ''}>
+                  <i class="fas fa-magic"></i> Mantener (Diario)
+              </button>
+          </div>
       </fieldset>
   `;
 
@@ -236,6 +271,48 @@ async function modifyZeonMaintainedDialog() {
     ],
     render: (event, dialog) => {
       const html = dialog.element;
+
+      html.querySelector("#maintain-per-turn")?.addEventListener("click", async () => {
+        if (zeonAcum < totalPerTurnCost) {
+          ui.notifications.warn("No tienes suficiente Zeón acumulado para mantener estos hechizos.");
+          return;
+        }
+
+        const newZeonAcum = zeonAcum - totalPerTurnCost;
+        await token.actor.update({
+          "system.mystic.zeon.accumulated": newZeonAcum,
+        });
+
+        ChatMessage.create({
+          user: game.user._id,
+          speaker: ChatMessage.getSpeaker({ token: actor }),
+          content: `<b>${token.name}</b> ha gastado <b>${totalPerTurnCost}</b> Zeón acumulado para mantener sus hechizos por turno. Zeón acumulado restante: <b>${newZeonAcum}</b>.`,
+        });
+
+        zeonAcum = newZeonAcum;
+        dialog.close();
+      });
+
+      html.querySelector("#maintain-daily")?.addEventListener("click", async () => {
+        if (zeonAcum < totalDailyCost) {
+          ui.notifications.warn("No tienes suficiente Zeón acumulado para mantener estos hechizos.");
+          return;
+        }
+
+        const newZeonAcum = zeonAcum - totalDailyCost;
+        await token.actor.update({
+          "system.mystic.zeon.accumulated": newZeonAcum,
+        });
+
+        ChatMessage.create({
+          user: game.user._id,
+          speaker: ChatMessage.getSpeaker({ token: actor }),
+          content: `<b>${token.name}</b> ha gastado <b>${totalDailyCost}</b> Zeón acumulado para mantener sus hechizos diarios. Zeón acumulado restante: <b>${newZeonAcum}</b>.`,
+        });
+
+        zeonAcum = newZeonAcum;
+        dialog.close();
+      });
 
       html.querySelectorAll(".delete-spell-per-turn").forEach((btn) => {
         btn.addEventListener("click", async (event) => {

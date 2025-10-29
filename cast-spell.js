@@ -203,23 +203,11 @@ async function updateZeon(mode, spell, spellData, selectedSpellGrade) {
   const parsedName = spell.name.match(parseRegex)[2];
   let cost = spellData.zeon.value ?? 0;
   let maintainedCost = spellData.maintenanceCost.value ?? 0;
+  
   if (mode == 1) {
-    if (!spell.system.hasDailyMaintenance.value) {
-      let selectedSpells = token.actor.system.mystic.selectedSpells || [];
-      const newSpell = {
-        _id: nanoid(),
-        name: spell.name,
-        system: { cost: { value: maintainedCost } },
-      };
-      selectedSpells.push(newSpell);
-      await token.actor.update({
-        "system.mystic.selectedSpells": selectedSpells,
-      });
-      token.actor.update({
-        "system.mystic.zeonMaintained.value":
-          (Number(zeonMant) ?? 0) + Number(maintainedCost),
-      });
-    } else {
+    const hasDailyMaintenance = spell.system.hasDailyMaintenance?.value ?? false;
+    
+    if (hasDailyMaintenance) {
       let dailySpells = token.actor.system.mystic.spellMaintenances || [];
       const newSpell = {
         _id: nanoid(),
@@ -230,8 +218,23 @@ async function updateZeon(mode, spell, spellData, selectedSpellGrade) {
       await token.actor.update({
         "system.mystic.spellMaintenances": dailySpells,
       });
+    } else {
+      let selectedSpells = token.actor.system.mystic.selectedSpells || [];
+      const newSpell = {
+        _id: nanoid(),
+        name: spell.name,
+        system: { 
+          cost: { value: maintainedCost },
+          grade: { value: selectedSpellGrade }
+        },
+      };
+      selectedSpells.push(newSpell);
+      await token.actor.update({
+        "system.mystic.selectedSpells": selectedSpells,
+      });
     }
   }
+  
   token.actor.update({
     "system.mystic.zeon.accumulated": (zeonAccum ?? 0) - cost,
   });
